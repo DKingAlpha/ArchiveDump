@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <lz4.h>
 #include <vector>
+#include <assert.h>
 
 #include <Windows.h>
 

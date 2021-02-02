@@ -1,3 +1,7 @@
+#include "RADR.hpp"
+#include "CR2W.hpp"
+
+#include <stdio.h>
 #include <filesystem>
 #include <assert.h>
 #include <string.h>
@@ -6,13 +10,19 @@
 #include <vector>
 #include <fstream>
 
-#include "RADR.hpp"
-#include "RADR.hpp"
-#include "CR2W.hpp"
 
 #include <Windows.h>
 
 using namespace std;
+
+struct DumpFlags {
+    bool name;
+    bool impt;
+    bool prop;
+    bool expt;
+    bool buffer;
+    bool embeded;
+};
 
 int extract_radr_archive(filesystem::path filepath, filesystem::path dump_path)
 {
@@ -44,11 +54,15 @@ int extract_radr_archive(filesystem::path filepath, filesystem::path dump_path)
             return 1;
         }
         
+        DumpFlags flag{
+            .buffer = true,
+        };
+        
         
         filesystem::create_directories(dump_path);
         
         RedArchive archive(file_content);
-        printf("========== RADR Archive ID: %S ==========\n", filepath.stem().c_str());
+        printf("========== RADR Archive: %S ==========\n", filepath.stem().c_str());
         for (uint32_t i = 0; i < archive.fileTable->fileEntryCount; i++)
         {
             RedArchiveFile f = archive.GetFile(i);
@@ -67,46 +81,77 @@ int extract_radr_archive(filesystem::path filepath, filesystem::path dump_path)
             uint32_t magic = *reinterpret_cast<uint32_t*>(f.data.data());
             if (magic == 'W2RC') // CR2W
             {
-                // -----------  WIP  --------------
                 // unpack CR2W files
                 auto cr2w = f.Get<CR2W>();
-                assert(cr2w->header.magic == 'W2RC'); // CR2W
                 #define ENT_OFFSET  ( reinterpret_cast<uintptr_t>(&ent) - reinterpret_cast<uintptr_t>(cr2w))
-                for (auto&& ent : cr2w->entries<CR2WName>())
-                {
-                    printf("[Name] %p %s, %x\n", ENT_OFFSET , ent.GetName(cr2w), ent.hash);
-                }
 
-                for (auto&& ent : cr2w->entries<CR2WImport>())
+                if (flag.name)
                 {
-                    printf("[Import] %p className: %s, depotPath: %s, flags: %x\n", 
-                        ENT_OFFSET,
-                        ent.GetTypeName(cr2w),
-                        ent.GetDepotPath(cr2w),
-                        ent.flags);
-                    
-                }
-
-                for (auto&& ent : cr2w->entries<CR2WProperty>())
-                {
-                    printf("[Property] %p className: %s, propertyName: %s\n", ENT_OFFSET, ent.GetTypeName(cr2w), ent.GetPropertyName(cr2w));
-                }
-
-                for (auto&& ent : cr2w->entries<CR2WExport>())
-                {
-                    printf("[Export]: %p %s\n", ENT_OFFSET, ent.GetName(cr2w).c_str());
-                    auto parent = ent.GetParent(cr2w);
-                    if (parent)
-                        printf("    [Parent]: %s\n", parent->GetName(cr2w).c_str());
-                    for (auto&& child : ent.GetChildren(cr2w))
+                    for (auto&& ent : cr2w->entries<CR2WName>())
                     {
-                        printf("    [Child]: %s\n", child->GetName(cr2w).c_str());
+                        printf("[Name] %p %s, %x\n", ENT_OFFSET, ent.GetName(cr2w), ent.hash);
+                    }
+                }
+                if (flag.impt)
+                {
+                    for (auto&& ent : cr2w->entries<CR2WImport>())
+                    {
+                        if (!ent.flags)
+                            continue;
+                        printf("[Import] %p className: %s, depotPath: %s, flags: %x\n",
+                            ENT_OFFSET,
+                            ent.GetTypeName(cr2w),
+                            ent.GetDepotPath(cr2w),
+                            ent.flags);
                     }
                 }
 
-                for (auto&& ent : cr2w->entries<CR2WBuffer>())
+                if (flag.prop)
                 {
+                    for (auto&& ent : cr2w->entries<CR2WProperty>())
+                    {
+                        printf("[Property] %p className: %s, propertyName: %s\n", ENT_OFFSET, ent.GetTypeName(cr2w), ent.GetPropertyName(cr2w));
+                    }
+                }
 
+                if (flag.expt)
+                {
+                    for (auto&& ent : cr2w->entries<CR2WExport>())
+                    {
+                        printf("[Export]: %p %s\n", ENT_OFFSET, ent.GetName(cr2w).c_str());
+                        auto parent = ent.GetParent(cr2w);
+                        if (parent)
+                            printf("    [Parent]: %s\n", parent->GetName(cr2w).c_str());
+                        for (auto&& child : ent.GetChildren(cr2w))
+                        {
+                            printf("    [Child]: %s\n", child->GetName(cr2w).c_str());
+                        }
+                    }
+                }
+
+                if (flag.buffer)
+                {
+                    for (auto&& ent : cr2w->entries<CR2WBuffer>())
+                    {
+                        printf("[Buffer]: %p  index: %d, crc: %x, size: %d/%d\n", ENT_OFFSET, ent.index, ent.crc32, ent.diskSize, ent.memSize);
+                        auto buf_savepath = dump_path / filesystem::path(to_string(f.entry.id) +  "_buf_" + to_string(ent.index));
+                        filesystem::create_directories(buf_savepath.parent_path());
+                        ofstream bof(buf_savepath.string());
+                        bof.write(cr2w->Get<const char>(ent.offset), ent.diskSize);
+                    }
+                }
+
+                // BROKEN
+                if (flag.embeded)
+                {
+                    for (auto&& ent : cr2w->entries<CR2WEmbedded>())
+                    {
+                        const char* x = "";
+                        auto imp = ent.GetImport(cr2w);
+                        if (imp)
+                            x = imp->GetDepotPath(cr2w);
+                        printf("[Embedded]: %p  size: %d, path:%s, importDepotPath:%s\n", ENT_OFFSET, ent.dataSize, ent.GetPath(cr2w), x);
+                    }
                 }
             }
             else {
@@ -160,7 +205,7 @@ int main(int argc, const char** argv)
             dump_path = default_dump_path;
         const filesystem::path& fpath = fp.path();
         filesystem::path dpath = dump_path / filepath.stem();
-        if (fpath.extension() != "archive")
+        if (fpath.extension() != ".archive")
             continue;
         extract_radr_archive(fpath, dpath);
     }

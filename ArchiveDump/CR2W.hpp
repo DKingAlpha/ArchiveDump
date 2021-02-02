@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <assert.h>
 
 // ---- CREDIT ----
 // WolvenKit: for CR2W structure
@@ -13,7 +14,7 @@
 template<typename T>
 class IteratableStructs {
 public:
-    IteratableStructs(T* p, uint32_t count) : pstart(p), pend(p + count + 1) {}
+    IteratableStructs(T* p, uint32_t count) : pstart(p), pend(p + count) {}
     IteratableStructs() : pstart(nullptr), pend(nullptr) {}
     T* begin() const { return pstart; }
     T* end() const { return pend; };
@@ -40,7 +41,7 @@ struct CR2WHeader {
 
 struct CR2WTableIndex {
     uint32_t pos;
-    uint32_t max_index;     // 1-based indexing
+    uint32_t count;
     uint32_t crc32;
 };
 
@@ -90,7 +91,7 @@ public:
     {
         int table_index = get_index_of_table<T>();
         uint32_t table_pos = tables[table_index].pos;
-        uint32_t table_ent_count = tables[table_index].max_index - 1;
+        uint32_t table_ent_count = tables[table_index].count;
         if (table_pos && table_ent_count > 0)
             return IteratableStructs<T> { Get<T>(table_pos), table_ent_count};
         else
@@ -102,11 +103,14 @@ public:
     {
         int table_index = get_index_of_table<T>();
         uint32_t table_pos = tables[table_index].pos;
-        uint32_t table_ent_count = tables[table_index].max_index - 1;
+        uint32_t table_ent_count = tables[table_index].count;
         if (table_pos && table_ent_count > 0 && index < table_ent_count)
             return Get<T>(table_pos)+ index;
         else
+        {
+            assert(0);
             return nullptr;
+        }
     }
 
 };
@@ -187,7 +191,7 @@ struct CR2WExport {
         assert(self_index >= 0);
         for (auto&& ent : ctx->entries<CR2WExport>())
         {
-            if (ent.parentID - 1 == self_index)
+            if (ent.parentID  == self_index + 1)    // 1-based
                 children.push_back(&ent);
         }
         return children;
@@ -198,15 +202,17 @@ struct CR2WBuffer {
     uint32_t flags;
     uint32_t index;
     uint32_t offset;
-    uint32_t dataSize;
+    uint32_t diskSize;
     uint32_t memSize;
     uint32_t crc32;
 };
 
+
+// BORKEN
 struct CR2WEmbedded {
     uint32_t importIndex;   // 1: first CR2WImport, 0: no import
     uint32_t path;
-    uint32_t pathHash;
+    uint64_t pathHash;
     uint32_t dataOffset;
     uint32_t dataSize;
 
