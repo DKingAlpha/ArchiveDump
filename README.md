@@ -4,12 +4,12 @@ An unofficial implementation of Cyberpunk 2077 archive dumper, by reversing offi
 * Official ArchiveDump.exe: print archive layout, without actual dumping
 * This project: Uncompressed archive and dump all files.
 
-#### WIP
-parsing CR2W files
+**WIP**: parsing CR2W files
+**What's done**: dump files from *.archive
 
 ## What's the difference between this and WolvenKit
 * [C++20 hpp](ArchiveDump/RADR.hpp) for pure native plugins
-* complete decompress implementation including `Kraken`, `LZ4` and `ZLIB`
+* this project does not parse CR2W files extracted from *.archive, neither repacking back.
 
 ## How to compile and test?
 1. install `vcpkg` and integrate with Visual Studio
@@ -19,4 +19,4 @@ parsing CR2W files
 5. build&run in Visual Studio
 
 ## Credit
-WolvenKit for CR2W file structure (WIP)
+WolvenKit for CR2W file structure
